@@ -1,37 +1,59 @@
-"""Réponse libre d'un oscillateur linéaire à 1 DDL."""
+"""Oscillateur linéaire masse-ressort-amortisseur à un degré de liberté.
+
+Grandeurs dynamiques principales, réponse libre analytique pour les trois
+régimes d'amortissement et identification par décrément logarithmique.
+"""
 
 import numpy as np
 
 
 def caracteristiques(m: float, c: float, k: float) -> tuple[float, float]:
-    """Retourne la pulsation propre non amortie et le taux d'amortissement."""
+    """Retourne (omega_n, zeta)."""
     if m <= 0 or k <= 0:
         raise ValueError("m et k doivent être strictement positifs.")
+    if c < 0:
+        raise ValueError("c doit être positif ou nul.")
     omega_n = np.sqrt(k / m)
     zeta = c / (2.0 * np.sqrt(k * m))
     return omega_n, zeta
 
 
-def reponse_libre_sous_amortie(t, m, c, k, x0, v0):
-    """Solution analytique pour 0 <= zeta < 1."""
+def reponse_libre(t, m: float, c: float, k: float, x0: float, v0: float):
+    """Réponse libre pour les régimes sous-amorti, critique et sur-amorti."""
+    t = np.asarray(t, dtype=float)
     omega_n, zeta = caracteristiques(m, c, k)
+    tol = 1e-10
+
+    if zeta < 1.0 - tol:
+        omega_d = omega_n * np.sqrt(1.0 - zeta**2)
+        a = x0
+        b = (v0 + zeta * omega_n * x0) / omega_d
+        return np.exp(-zeta * omega_n * t) * (
+            a * np.cos(omega_d * t) + b * np.sin(omega_d * t)
+        )
+
+    if abs(zeta - 1.0) <= tol:
+        a = x0
+        b = v0 + omega_n * x0
+        return (a + b * t) * np.exp(-omega_n * t)
+
+    racine = np.sqrt(zeta**2 - 1.0)
+    r1 = -omega_n * (zeta - racine)
+    r2 = -omega_n * (zeta + racine)
+    a = (v0 - r2 * x0) / (r1 - r2)
+    b = x0 - a
+    return a * np.exp(r1 * t) + b * np.exp(r2 * t)
+
+
+def decrement_logarithmique(zeta: float) -> float:
+    """Décrément logarithmique théorique pour 0 <= zeta < 1."""
     if not 0 <= zeta < 1:
-        raise ValueError("Cette fonction traite uniquement le régime sous-amorti.")
-    omega_d = omega_n * np.sqrt(1.0 - zeta**2)
-    a = x0
-    b = (v0 + zeta * omega_n * x0) / omega_d
-    return np.exp(-zeta * omega_n * t) * (
-        a * np.cos(omega_d * t) + b * np.sin(omega_d * t)
-    )
+        raise ValueError("Le décrément est défini ici pour le régime sous-amorti.")
+    return 2.0 * np.pi * zeta / np.sqrt(1.0 - zeta**2)
 
 
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    t = np.linspace(0.0, 5.0, 2000)
-    x = reponse_libre_sous_amortie(t, 1.0, 0.4, 100.0, 0.05, 0.0)
-    plt.plot(t, x)
-    plt.xlabel("Temps (s)")
-    plt.ylabel("Déplacement (m)")
-    plt.title("Réponse libre sous-amortie")
-    plt.grid(True)
-    plt.show()
+def zeta_depuis_decrement(delta: float) -> float:
+    """Identifie zeta à partir du décrément logarithmique."""
+    if delta < 0:
+        raise ValueError("delta doit être positif ou nul.")
+    return delta / np.sqrt((2.0 * np.pi) ** 2 + delta**2)
